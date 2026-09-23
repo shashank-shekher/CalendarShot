@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>CalendarShot.Core</RootNamespace>
+    <Description>Platform-independent parsing, storage and iCalendar export for CalendarShot.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CalendarShot.Core.Tests" />
+  </ItemGroup>
+
+</Project>

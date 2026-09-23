@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work as described in the user manual.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+        **Please do not attach screenshots of your real calendar.** They can contain private
+        information. If a layout is not recognised, see "Reporting recognition problems" in the
+        developer guide for how to share an anonymised OCR dump instead.
+  - type: input
+    id: version
+    attributes:
+      label: CalendarShot version
+      description: Shown in the tray menu under About.
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+  - type: dropdown
+    id: calendar
+    attributes:
+      label: Calendar application and view
+      options:
+        - Outlook (desktop) – month view
+        - Outlook (web) – month view
+        - Google Calendar – month view
+        - Any – week or day view
+        - Any – agenda/schedule view
+        - Other
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt
+      description: From Documents\CalendarShot\logs. Logs contain no event titles, but check before pasting.
+      render: text

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>CalendarShot.Inspect</RootNamespace>
+    <Description>Developer tool: runs text recognition and layout parsing on a screenshot and prints the result.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CalendarShot.Core\CalendarShot.Core.csproj" />
+    <!-- Shares the exact recognition code used by the application. -->
+    <Compile Include="..\..\src\CalendarShot\Ocr\WindowsOcrService.cs" Link="Ocr\WindowsOcrService.cs" />
+  </ItemGroup>
+
+</Project>

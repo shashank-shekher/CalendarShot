@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local screenshots and OCR dumps used while debugging (may contain private data)
+*.local.png
+*.local.json

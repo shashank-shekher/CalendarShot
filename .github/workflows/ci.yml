@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CalendarShot.slnx --locked-mode
+
+      - name: Build
+        run: dotnet build CalendarShot.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test CalendarShot.slnx --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Check for vulnerable packages
+        shell: pwsh
+        run: |
+          $report = dotnet list CalendarShot.slnx package --vulnerable --include-transitive
+          $report
+          if ($report -match 'has the following vulnerable packages') { exit 1 }
+
+      - name: Publish
+        shell: pwsh
+        run: ./build/publish.ps1 -Configuration Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CalendarShot-win-x64
+          path: artifacts/*.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: TestResults

@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test CalendarShot.slnx --configuration Release
+
+      - name: Publish
+        shell: pwsh
+        run: ./build/publish.ps1 -Configuration Release -Version $env:GITHUB_REF_NAME.TrimStart('v')
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh release create $env:GITHUB_REF_NAME (Get-ChildItem artifacts/*.zip, artifacts/*.sha256) --title $env:GITHUB_REF_NAME --generate-notes
