@@ -26,6 +26,12 @@ public class EventTextParserTests
     [InlineData("1 lam - 12:30pm Planning", "Planning", "11:00", "12:30")]
     [InlineData("9 - IOam Design review", "Design review", "09:00", "10:00")]
     [InlineData("gam Team standup", "Team standup", "09:00", null)]
+    [InlineData("1000 AM Kaffee", "Kaffee", "10:00", null)]
+    [InlineData("0900 AM 2nd Probation", "2nd Probation", "09:00", null)]
+    [InlineData("04 30 PM Inhouse-Deutschkurs", "Inhouse-Deutschkurs", "16:30", null)]
+    [InlineData("09 OOAM - 10 30 AM Kaffee", "Kaffee", "09:00", "10:30")]
+    [InlineData("10200 PM Coding", "Coding", "14:00", null)]
+    [InlineData("112 15 PM Responsible Use", "Responsible Use", "12:15", null)]
     public void Parses_times_and_titles(string input, string title, string start, string? end)
     {
         ParsedEventText parsed = EventTextParser.Parse(input);
@@ -48,6 +54,25 @@ public class EventTextParserTests
 
         Assert.Equal(input, parsed.Title);
         Assert.Null(parsed.Start);
+    }
+
+    [Theory]
+    [InlineData("00 AM Adamant PA4G", "Adamant PA4G")]
+    [InlineData("30 PM Review", "Review")]
+    public void Time_fragments_without_an_hour_are_dropped(string input, string title)
+    {
+        ParsedEventText parsed = EventTextParser.Parse(input);
+
+        Assert.Equal(title, parsed.Title);
+        Assert.Null(parsed.Start);
+    }
+
+    [Theory]
+    [InlineData("Room 1000 tour")]
+    [InlineData("Budget 2026")]
+    public void Numbers_without_a_meridiem_are_not_changed(string input)
+    {
+        Assert.Equal(input, EventTextParser.Parse(input).Title);
     }
 
     [Fact]

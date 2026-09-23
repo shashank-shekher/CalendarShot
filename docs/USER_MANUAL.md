@@ -172,6 +172,7 @@ Right-click the CalendarShot icon in the notification area:
 
 - **Use month view** for everyday captures and **week view** for busy weeks. Month views often truncate titles and hide events behind "+N more". Week views show more detail and times.
 - **Maximise the calendar window** so that text is as large as possible. At 100% display scaling, zooming the calendar in (Ctrl + plus in a browser) also helps.
+- **Very small calendar text** (HCL Notes, for example) is read with extra passes, but letters can still be misread. If titles come out garbled, increase the calendar's font size, or raise Windows display scaling under **Settings > System > Display > Scale** while capturing.
 - **Make sure weekday names are visible** ("Mon", "Tuesday", "SUN"…), as well as the month and year title such as "September 2026". CalendarShot uses them to work out the dates.
 - **Close pop-ups and tooltips** that cover the calendar before the countdown ends.
 - **Keep the capture regular.** Capturing every working day means each month's file stays current and changes are picked up quickly.

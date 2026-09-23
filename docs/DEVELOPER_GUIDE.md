@@ -131,6 +131,8 @@ Recognition turns an `OcrPage` (words with bounding boxes) into a `RecognitionRe
 
 `WindowsOcrService` runs Windows OCR twice at different scales: 2× and 1× for screens up to 2560 px wide, 1× and 1.5× above that. Upscaling helps with small UI text, but each scale sometimes drops or garbles words that the other reads correctly. `OcrPassMerger` fills words missing from the primary pass and swaps in the secondary reading when it has more letters and digits without garbage characters. Coordinates are mapped back to the original image size.
 
+Some applications (HCL Notes, for example) draw their calendar in very small type. When the median word height of the first pass is below 8.5 screen pixels, the image is read again at a scale that brings the text to about 32 pixels (up to 4.5×) and at an intermediate scale. The three passes are merged with the largest one as the primary, because recognition of tiny text is unstable and each scale misses different lines.
+
 ### 2. Pre-processing (`PageContext`)
 
 - **Unit**: the median word height. Every tolerance in the parsers is a multiple of it, which keeps parsing independent of resolution and DPI.
@@ -144,7 +146,12 @@ Recognition turns an `OcrPage` (words with bounding boxes) into a `RecognitionRe
 **`MonthGridParser`**
 
 1. Finds rows of seven evenly spaced weekday tokens (`Sun`, `Monday`, `S`…). The widest row is the main grid; narrower ones are usually mini calendars in a side bar.
-2. Derives seven column bands from the header. Labels may be left-aligned, centred or right-aligned, so the most evenly spaced edge is used. The bands are then refined against the page: calendars clip text at cell borders and start event text just inside them, so the parser picks the offset that minimises words crossing a border, keeps closely spaced phrases together and aligns the most event text with a border start.
+2. Derives the eight column borders from the header. Columns need not be equally wide; some calendars draw Saturday and Sunday narrower. Labels may be left-aligned, centred or right-aligned, so the most evenly spaced edge is used for the first estimate. The borders are then refined against the page. Calendars clip text at cell borders and start event text (usually a time) just inside them, so a good border has no words crossing it, does not separate a time from its title, and has event text starting right after it.
+   - First all borders are shifted together, which fixes the case where the label alignment cannot be told from positions alone.
+   - Then each border is adjusted on its own, which fixes unequal widths.
+   - Day numbers of different widths that share a right (or left) edge pin the neighbouring border just beyond that edge.
+   - The outer borders barely move outwards, so side panels stay out of the grid.
+   - No border moves more than 45% of a column in total, because a shift of a whole column describes the same grid one day off.
 3. Splits all text below the header by column and finds day numbers (`14`, `Oct 1`).
 4. Clusters day numbers into week rows. The row height comes from the smallest plausible gap, so a row whose numbers OCR missed does not shift the dates of the rows after it.
 5. Solves for the grid's start date: every candidate start date within a few weeks of the caption month (or today) is scored by how many day numbers it explains. Numbers that carry a month (`Oct 1`) add a bonus. At least 60% of the numbers must match.

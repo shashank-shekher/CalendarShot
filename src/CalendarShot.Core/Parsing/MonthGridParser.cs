@@ -74,8 +74,9 @@ internal sealed class MonthGridParser
             gaps[i] = positions[i + 1] - positions[i];
         }
 
+        // Weekend columns are sometimes drawn narrower, so allow some variation.
         double mean = gaps.Average();
-        return mean > unit * 1.5 && gaps.All(g => Math.Abs(g - mean) < mean * 0.35);
+        return mean > unit * 1.5 && gaps.All(g => g > 0 && Math.Abs(g - mean) < mean * 0.45);
     }
 
     private RecognitionResult? TryParseWithHeader(
@@ -291,20 +292,19 @@ internal sealed class MonthGridParser
     private sealed record DayNumber(int Column, TextSegment Segment, int Day, int? Month);
 
     /// <summary>
-    /// Seven equally wide column bands derived from the weekday header. The
-    /// header labels may be left-aligned, centred or right-aligned in their
-    /// cells; whichever edge is most evenly spaced is used.
+    /// Seven column bands derived from the weekday header. Columns need not be
+    /// equally wide: some calendars draw weekends narrower. Header labels may be
+    /// left-aligned, centred or right-aligned in their cells; whichever edge is
+    /// most evenly spaced is used for the first estimate of the borders.
     /// </summary>
     private sealed class ColumnBands
     {
-        private readonly double _left;
-        private readonly double _width;
+        /// <summary>Largest border movement during refinement, as a share of the mean column width.</summary>
+        private const double MaxBorderMove = 0.45;
 
-        private ColumnBands(double left, double width)
-        {
-            _left = left;
-            _width = width;
-        }
+        private readonly double[] _borders;
+
+        private ColumnBands(double[] borders) => _borders = borders;
 
         public static ColumnBands FromHeader(List<OcrWord> header)
         {
@@ -316,101 +316,268 @@ internal sealed class MonthGridParser
             double centerSpread = Spread(centers);
             double rightSpread = Spread(rights);
 
-            double[] anchors;
-            double leadFraction;
+            var borders = new double[DaysPerWeek + 1];
             if (leftSpread < centerSpread * 0.8 && leftSpread <= rightSpread)
             {
-                anchors = lefts;
-                leadFraction = 0.1;
+                // Each label starts a little after the left border of its cell.
+                for (int i = 0; i < DaysPerWeek; i++)
+                {
+                    double gap = i < DaysPerWeek - 1 ? lefts[i + 1] - lefts[i] : lefts[i] - lefts[i - 1];
+                    borders[i] = lefts[i] - (gap * 0.1);
+                }
+
+                borders[DaysPerWeek] = lefts[^1] + ((lefts[^1] - lefts[^2]) * 0.9);
             }
             else if (rightSpread < centerSpread * 0.8)
             {
-                anchors = rights;
-                leadFraction = 0.9;
+                // Each label ends a little before the right border of its cell.
+                for (int i = 0; i < DaysPerWeek; i++)
+                {
+                    double gap = i > 0 ? rights[i] - rights[i - 1] : rights[1] - rights[0];
+                    borders[i + 1] = rights[i] + (gap * 0.1);
+                }
+
+                borders[0] = rights[0] - ((rights[1] - rights[0]) * 0.9);
             }
             else
             {
-                anchors = centers;
-                leadFraction = 0.5;
+                for (int i = 1; i < DaysPerWeek; i++)
+                {
+                    borders[i] = (centers[i - 1] + centers[i]) / 2;
+                }
+
+                borders[0] = centers[0] - (borders[1] - centers[0]);
+                borders[DaysPerWeek] = centers[^1] + (centers[^1] - borders[DaysPerWeek - 1]);
             }
 
-            double width = (anchors[^1] - anchors[0]) / (anchors.Length - 1);
-            return new ColumnBands(anchors[0] - (width * leadFraction), width);
+            return new ColumnBands(borders);
         }
 
         /// <summary>
-        /// Header labels of equal width ("Sun", "Mon", …) do not reveal whether
-        /// they are centred or left-aligned, which shifts the estimated borders by
-        /// up to half a cell. Calendars clip text at cell borders and start it just
-        /// inside the left border, so the border position is adjusted to the offset
-        /// where no words cross a border, closely spaced phrases stay together and
-        /// the most event text starts just after a border. Day numbers are ignored
-        /// for the latter because many calendars centre them.
+        /// Moves the estimated borders to where the page's text says they are.
+        /// Calendars clip text at cell borders and start it just inside the left
+        /// border, so a good border has no words crossing it, does not split a
+        /// closely spaced phrase, and has event text starting just after it.
+        /// Day numbers are ignored for the latter because many calendars centre
+        /// or right-align them.
         /// </summary>
+        /// <remarks>
+        /// First all borders are shifted together, which corrects labels whose
+        /// alignment cannot be told from their positions (for example when "Sun",
+        /// "Mon" and the others all have the same width). Then each border is
+        /// adjusted on its own, which corrects columns of different widths.
+        /// </remarks>
         public ColumnBands RefineWith(PageContext page, double headerBottom, Func<string, bool> isDayNumber)
         {
-            double gridLeft = _left - (_width / 2);
-            double gridRight = _left + (_width * (DaysPerWeek + 0.5));
+            double meanWidth = (_borders[^1] - _borders[0]) / DaysPerWeek;
+            double gridLeft = _borders[0] - (meanWidth / 4);
+            double gridRight = _borders[^1] + (meanWidth / 4);
+
+            // No border may end up more than this far from its first estimate.
+            // Moving by about a whole column would describe the same grid shifted
+            // by one day, which sparse text cannot rule out.
+            double maxMove = meanWidth * MaxBorderMove;
 
             var segments = page.Segments
                 .Where(s => s.Bounds.CenterY > headerBottom && s.Bounds.X >= gridLeft && s.Bounds.Right <= gridRight)
                 .ToList();
-            var words = segments.SelectMany(s => s.Words).ToList();
-            var starts = segments.Where(s => !isDayNumber(s.Text)).Select(s => s.Bounds.X).ToList();
-            var wordGaps = segments
-                .SelectMany(s => s.Words.Zip(s.Words.Skip(1), (a, b) => (a.Bounds.Right, b.Bounds.X)))
+            var eventSegments = segments.Where(s => !isDayNumber(s.Text)).ToList();
+
+            // Event lines usually begin with a time. When a clipped title in one
+            // cell sits right against the next cell's time, OCR puts both in one
+            // segment, so times are counted as starts in their own right.
+            var starts = eventSegments.Select(s => s.Bounds.X)
+                .Concat(eventSegments.SelectMany(s => s.Words.Skip(1)).Where(w => char.IsAsciiDigit(w.Text[0])).Select(w => w.Bounds.X))
                 .ToList();
 
-            if (words.Count == 0)
+            var text = new PageText(
+                segments.SelectMany(s => s.Words).Select(w => (w.Bounds.X, w.Bounds.Right)).ToList(),
+                segments.SelectMany(s => s.Words.Zip(s.Words.Skip(1), (a, b) => (a.Bounds.Right, b.Bounds.X, IsTimeWord(a.Text) && !IsTimeWord(b.Text))))
+                    .ToList(),
+                starts);
+
+            if (text.Words.Count == 0)
             {
                 return this;
             }
 
-            double bestLeft = _left;
-            double bestScore = double.MaxValue;
-            double bestDistance = double.MaxValue;
-            const int Steps = 100;
+            double[] borders = (double[])_borders.Clone();
 
-            for (int i = -Steps / 2; i <= Steps / 2; i++)
+            // Stage 1: shift all borders together. Each border may still move a
+            // little on its own while the shift is scored, so that one border that
+            // is off (for example next to a narrower weekend column) does not drag
+            // all the others with it.
+            double shift = BestPosition(-maxMove, maxMove, 0, offset =>
             {
-                double offset = _width * i / Steps;
-                double left = _left + offset;
-
-                int crossings = words.Count(w => CrossesBorder(w.Bounds.X, w.Bounds.Right, left));
-                int splitPhrases = wordGaps.Count(g => CrossesBorder(g.Right, g.X, left));
-                int alignedStarts = starts.Count(x => PositionInCell(x, left) is >= 0 and <= 0.15);
-
-                double score = (crossings * 3) + splitPhrases - alignedStarts;
-                double distance = Math.Abs(offset);
-                if (score < bestScore || (score == bestScore && distance < bestDistance))
+                double score = 0;
+                for (int i = 0; i <= DaysPerWeek; i++)
                 {
-                    bestScore = score;
-                    bestDistance = distance;
-                    bestLeft = left;
+                    double slack = CellWidth(borders, Math.Min(i, DaysPerWeek - 1)) * 0.15;
+                    double window = StartWindow(borders, i);
+                    double best = double.MaxValue;
+                    for (int step = -10; step <= 10; step++)
+                    {
+                        double move = Math.Clamp(offset + (slack * step / 10), -maxMove, maxMove);
+                        best = Math.Min(best, text.Score(borders[i] + move, window));
+                    }
+
+                    score += best;
+                }
+
+                return score;
+            });
+
+            for (int i = 0; i <= DaysPerWeek; i++)
+            {
+                borders[i] += shift;
+            }
+
+            // Stage 2: adjust each border on its own, staying well inside its
+            // neighbours. The outer borders move outwards only a little so that side bars
+            // are not pulled into the grid, and aligned day numbers limit the
+            // borders next to them.
+            (double Min, double Max)[] limits = DayNumberLimits(page, headerBottom, isDayNumber, borders);
+            for (int i = 0; i <= DaysPerWeek; i++)
+            {
+                double leftWidth = i > 0 ? borders[i] - borders[i - 1] : borders[1] - borders[0];
+                double rightWidth = i < DaysPerWeek ? borders[i + 1] - borders[i] : leftWidth;
+                double range = Math.Min(leftWidth, rightWidth) * 0.35;
+
+                double outward = Math.Min(leftWidth, rightWidth) * 0.1;
+                double low = Math.Max(i == 0 ? borders[i] - outward : borders[i] - range, _borders[i] - maxMove);
+                double high = Math.Min(i == DaysPerWeek ? borders[i] + outward : borders[i] + range, _borders[i] + maxMove);
+                double limitedLow = Math.Max(low, limits[i].Min);
+                double limitedHigh = Math.Min(high, limits[i].Max);
+                if (limitedLow <= limitedHigh)
+                {
+                    (low, high) = (limitedLow, limitedHigh);
+                }
+
+                double window = StartWindow(borders, i);
+                borders[i] = BestPosition(low, high, Math.Clamp(borders[i], low, high), b => text.Score(b, window));
+            }
+
+            return new ColumnBands(borders);
+        }
+
+        /// <summary>
+        /// Calendars align day numbers to one edge of their cell. Where the
+        /// numbers of a column share a right edge (or left edge) while their
+        /// widths differ ("4" and "11"), the cell border lies just beyond that edge.
+        /// </summary>
+        private static (double Min, double Max)[] DayNumberLimits(
+            PageContext page, double headerBottom, Func<string, bool> isDayNumber, double[] borders)
+        {
+            var limits = new (double Min, double Max)[DaysPerWeek + 1];
+            Array.Fill(limits, (double.MinValue, double.MaxValue));
+
+            double gridLeft = borders[0] - ((borders[1] - borders[0]) / 2);
+            double gridRight = borders[^1] + ((borders[^1] - borders[^2]) / 2);
+            var numbers = page.Segments
+                .Where(s => s.Bounds.CenterY > headerBottom && s.Bounds.X >= gridLeft && s.Bounds.Right <= gridRight && isDayNumber(s.Text))
+                .Select(s => s.Bounds)
+                .ToList();
+
+            // Numbers are grouped by their edges rather than by the estimated
+            // columns, because right-aligned numbers sit so close to the border
+            // that a first estimate can put them in the wrong column.
+            double tolerance = page.Unit * 0.25;
+            foreach (List<TextBounds> group in LayoutMath.Cluster(numbers, b => b.Right, tolerance))
+            {
+                if (IsAlignedGroup(group, b => b.Right, b => b.X, tolerance))
+                {
+                    double edge = group.Max(b => b.Right);
+                    int border = NearestBorder(borders, edge);
+                    double margin = CellWidth(borders, border - 1) * 0.15;
+                    limits[border] = Intersect(limits[border], (edge, edge + margin));
                 }
             }
 
-            return new ColumnBands(bestLeft, _width);
+            foreach (List<TextBounds> group in LayoutMath.Cluster(numbers, b => b.X, tolerance))
+            {
+                if (IsAlignedGroup(group, b => b.X, b => b.Right, tolerance))
+                {
+                    double edge = group.Min(b => b.X);
+                    int border = NearestBorder(borders, edge);
+                    double margin = CellWidth(borders, border) * 0.15;
+                    limits[border] = Intersect(limits[border], (edge - margin, edge));
+                }
+            }
+
+            return limits;
+
+            // Aligned on one edge while the other edge varies, i.e. numbers of different widths.
+            static bool IsAlignedGroup(List<TextBounds> group, Func<TextBounds, double> aligned, Func<TextBounds, double> other, double tolerance) =>
+                group.Count >= 3
+                && group.Max(aligned) - group.Min(aligned) <= tolerance
+                && group.Max(other) - group.Min(other) > tolerance * 2;
+
+            static int NearestBorder(double[] borders, double x)
+            {
+                int best = 0;
+                for (int i = 1; i < borders.Length; i++)
+                {
+                    if (Math.Abs(borders[i] - x) < Math.Abs(borders[best] - x))
+                    {
+                        best = i;
+                    }
+                }
+
+                return best;
+            }
+
+            static (double Min, double Max) Intersect((double Min, double Max) a, (double Min, double Max) b) =>
+                (Math.Max(a.Min, b.Min), Math.Min(a.Max, b.Max));
         }
 
-        private bool CrossesBorder(double x, double right, double left)
-        {
-            double first = Math.Floor((x - left) / _width);
-            double last = Math.Floor((right - left) / _width);
-            return first != last;
-        }
-
-        /// <summary>Position of <paramref name="x"/> within its cell, from 0 (left border) to 1.</summary>
-        private double PositionInCell(double x, double left)
-        {
-            double relative = (x - left) / _width;
-            return relative - Math.Floor(relative);
-        }
+        private static double CellWidth(double[] borders, int column) =>
+            borders[Math.Clamp(column + 1, 1, DaysPerWeek)] - borders[Math.Clamp(column, 0, DaysPerWeek - 1)];
 
         public int IndexOf(double x)
         {
-            int index = (int)Math.Floor((x - _left) / _width);
-            return index is >= 0 and < DaysPerWeek ? index : -1;
+            for (int i = 0; i < DaysPerWeek; i++)
+            {
+                if (x >= _borders[i] && x < _borders[i + 1])
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Width of the zone just right of border <paramref name="i"/> in which
+        /// event text is expected to start; zero for the outer right border.
+        /// </summary>
+        private static double StartWindow(double[] borders, int i) =>
+            i >= DaysPerWeek ? 0 : (borders[i + 1] - borders[i]) * 0.15;
+
+        /// <summary>
+        /// Searches <paramref name="low"/> to <paramref name="high"/> for the lowest
+        /// score, preferring positions closer to <paramref name="preferred"/> on ties.
+        /// </summary>
+        private static double BestPosition(double low, double high, double preferred, Func<double, double> score)
+        {
+            const int Steps = 100;
+            double best = preferred;
+            double bestScore = double.MaxValue;
+            double bestDistance = double.MaxValue;
+
+            for (int step = 0; step <= Steps; step++)
+            {
+                double position = low + ((high - low) * step / Steps);
+                double value = score(position);
+                double distance = Math.Abs(position - preferred);
+                if (value < bestScore || (value == bestScore && distance < bestDistance))
+                {
+                    best = position;
+                    bestScore = value;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
         }
 
         private static double Spread(double[] values)
@@ -423,6 +590,30 @@ internal sealed class MonthGridParser
 
             double mean = gaps.Average();
             return mean <= 0 ? double.MaxValue : gaps.Sum(g => Math.Abs(g - mean)) / mean;
+        }
+
+        /// <summary>A clock time or meridiem as it appears at the start of event lines ("10:00", "1000", "AM").</summary>
+        private static bool IsTimeWord(string text) =>
+            text.Length > 0 && (char.IsAsciiDigit(text[0]) || text is "AM" or "PM" or "am" or "pm");
+
+        private sealed record PageText(
+            List<(double X, double Right)> Words,
+            List<(double Right, double X, bool TimeBeforeTitle)> WordGaps,
+            List<double> Starts)
+        {
+            /// <summary>
+            /// Lower is better. Words crossing a border and phrases split by it count
+            /// against the border; separating a time from the title that follows it
+            /// counts heavily, since that never happens inside a real cell. Text
+            /// starting just after the border counts in its favour.
+            /// </summary>
+            public double Score(double border, double startWindow)
+            {
+                int crossings = Words.Count(w => w.X < border && w.Right > border);
+                double splits = WordGaps.Where(g => g.Right <= border && g.X >= border).Sum(g => g.TimeBeforeTitle ? 3 : 1);
+                int starts = startWindow > 0 ? Starts.Count(x => x >= border && x <= border + startWindow) : 0;
+                return (crossings * 3) + splits - starts;
+            }
         }
     }
 }

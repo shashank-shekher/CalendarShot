@@ -45,6 +45,10 @@ public static partial class EventTextParser
             {
                 return new ParsedEventText(CleanTitle(rest), start, end);
             }
+
+            // A time whose hour OCR lost ("00 AM Review", "30 PM Review") cannot be
+            // recovered; drop the fragment so that at least the title is clean.
+            normalized = OrphanTimeFragmentPattern().Replace(normalized, string.Empty);
         }
 
         return new ParsedEventText(CleanTitle(normalized), null, null);
@@ -169,7 +173,61 @@ public static partial class EventTextParser
         });
 
         // "gam" / "gpm" are misreads of "9am" / "9pm".
-        return OcrNinePattern().Replace(result, "9");
+        result = OcrNinePattern().Replace(result, "9");
+
+        // Small text often loses the colon: "1000 AM", "10 00 AM", "09 OOAM". The
+        // coloured edge of an event chip can also be read as a leading "1":
+        // "10200 PM" for "02:00 PM". Only applied directly before AM/PM.
+        return OcrMissingColonPattern().Replace(result, match => RestoreColon(match.Value));
+    }
+
+    private static string RestoreColon(string value)
+    {
+        var digits = new StringBuilder(value.Length);
+        foreach (char c in value)
+        {
+            switch (c)
+            {
+                case ' ' or '.':
+                    break;
+                case 'O':
+                    digits.Append('0');
+                    break;
+                case 'I' or 'l' or '|':
+                    digits.Append('1');
+                    break;
+                default:
+                    digits.Append(c);
+                    break;
+            }
+        }
+
+        string d = digits.ToString();
+        if (d.Length <= 2 || !d.All(char.IsAsciiDigit))
+        {
+            return value;
+        }
+
+        return TryClock(d, out string clock) || (d[0] == '1' && TryClock(d[1..], out clock)) ? clock : value;
+
+        static bool TryClock(string d, out string clock)
+        {
+            clock = string.Empty;
+            if (d.Length is < 3 or > 4)
+            {
+                return false;
+            }
+
+            int hour = int.Parse(d[..^2], CultureInfo.InvariantCulture);
+            int minute = int.Parse(d[^2..], CultureInfo.InvariantCulture);
+            if (hour is < 1 or > 12 || minute > 59)
+            {
+                return false;
+            }
+
+            clock = string.Create(CultureInfo.InvariantCulture, $"{hour}:{minute:00}");
+            return true;
+        }
     }
 
     private static bool TryMatchTime(Match m, out TimeOnly start, out TimeOnly? end, out string rest)
@@ -327,7 +385,7 @@ public static partial class EventTextParser
     [GeneratedRegex(@"^all[\s-]?day\b[\s,:-]*|[\s,(-]*\ball[\s-]?day\)?$", Options)]
     private static partial Regex AllDayPattern();
 
-    [GeneratedRegex(@"^(today|tomorrow|yesterday|more|no events|nothing planned|free|busy|week \d+|cw ?\d+|wk ?\d+)$", Options)]
+    [GeneratedRegex(@"^(today|tomorrow|yesterday|more|no events|nothing planned|free|busy|week \d+|cw ?\d+|wk ?\d+|\d{0,4} ?[ap]\.?m\.?)$", Options)]
     private static partial Regex NoisePattern();
 
     [GeneratedRegex(@"^\+\s?\d+$|^\+?\s?\d+\s?(more|weitere|plus|autres?|más)\b.*$", Options)]
@@ -344,4 +402,10 @@ public static partial class EventTextParser
 
     [GeneratedRegex(@"(?<![\p{L}\d])g(?=\s?[aApP]\.?[mM]\b)", RegexOptions.CultureInvariant)]
     private static partial Regex OcrNinePattern();
+
+    [GeneratedRegex(@"(?<![\p{L}\d:])[\dIlO|]{1,5}(?:[ .][\dO]{2})?(?=\s?[aApP]\.?[mM]\b)", RegexOptions.CultureInvariant)]
+    private static partial Regex OcrMissingColonPattern();
+
+    [GeneratedRegex(@"^\d{1,2}\s?[aApP]\.?[mM]\.?(?=\s)", RegexOptions.CultureInvariant)]
+    private static partial Regex OrphanTimeFragmentPattern();
 }

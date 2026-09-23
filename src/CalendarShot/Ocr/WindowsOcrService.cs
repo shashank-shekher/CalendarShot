@@ -25,6 +25,17 @@ internal static class WindowsOcrService
     /// <summary>Screens up to this width are upscaled, which noticeably improves accuracy on small text.</summary>
     private const int UpscaleWidthLimit = 2560;
 
+    /// <summary>
+    /// Median word height, in screen pixels, below which text counts as very small.
+    /// Typical 9-point UI text measures about 10 pixels; some applications use less.
+    /// </summary>
+    private const double SmallTextHeight = 8.5;
+
+    /// <summary>Text height, in pixels of the scaled image, at which Windows OCR reads most reliably.</summary>
+    private const double TargetTextHeight = 32;
+
+    private const double MaxScale = 4.5;
+
     public static IReadOnlyList<(string Tag, string DisplayName)> AvailableLanguages() =>
         OcrEngine.AvailableRecognizerLanguages
             .Select(l => (l.LanguageTag, l.DisplayName))
@@ -42,6 +53,24 @@ internal static class WindowsOcrService
         secondaryScale = Math.Min(secondaryScale, limit);
 
         OcrPage primary = await RecognizePassAsync(engine, image, primaryScale, cancellationToken).ConfigureAwait(false);
+
+        // Some applications draw their calendar in very small type. When the
+        // first pass shows that, read again at a scale that brings the text to a
+        // comfortable height and treat that pass as the more reliable one.
+        double textHeight = MedianWordHeight(primary);
+        if (textHeight > 0 && textHeight < SmallTextHeight)
+        {
+            double wanted = Math.Min(Math.Min(TargetTextHeight / textHeight, MaxScale), limit);
+            if (wanted > primaryScale * 1.2)
+            {
+                // Recognition of very small text is unstable: each scale misses
+                // different lines, so an intermediate scale is read as well.
+                OcrPage large = await RecognizePassAsync(engine, image, wanted, cancellationToken).ConfigureAwait(false);
+                OcrPage middle = await RecognizePassAsync(engine, image, (wanted + primaryScale) / 2, cancellationToken).ConfigureAwait(false);
+                return OcrPassMerger.Merge(OcrPassMerger.Merge(large, middle), primary);
+            }
+        }
+
         if (Math.Abs(primaryScale - secondaryScale) < 0.1)
         {
             return primary;
@@ -49,6 +78,12 @@ internal static class WindowsOcrService
 
         OcrPage secondary = await RecognizePassAsync(engine, image, secondaryScale, cancellationToken).ConfigureAwait(false);
         return OcrPassMerger.Merge(primary, secondary);
+    }
+
+    private static double MedianWordHeight(OcrPage page)
+    {
+        double[] heights = page.Lines.SelectMany(l => l.Words).Select(w => w.Bounds.Height).Order().ToArray();
+        return heights.Length == 0 ? 0 : heights[heights.Length / 2];
     }
 
     private static async Task<OcrPage> RecognizePassAsync(OcrEngine engine, Bitmap image, double scale, CancellationToken cancellationToken)

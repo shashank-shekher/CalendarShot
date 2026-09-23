@@ -168,6 +168,67 @@ public class MonthGridParserTests
             result.Events);
     }
 
+    [Fact]
+    public void Reads_a_grid_with_narrow_weekends_and_right_aligned_day_numbers()
+    {
+        // HCL Notes style: Monday first, Saturday and Sunday narrower than weekdays,
+        // centred weekday names, day numbers in the top-right corner, and event
+        // text clipped at the cell border so that it touches the next cell's time.
+        double[] borders = [172, 333, 495, 657, 819, 980, 1085, 1190];
+        string[] names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        int[][] weeks =
+        [
+            [31, 1, 2, 3, 4, 5, 6],
+            [7, 8, 9, 10, 11, 12, 13],
+            [14, 15, 16, 17, 18, 19, 20],
+            [21, 22, 23, 24, 25, 26, 27],
+            [28, 29, 30, 1, 2, 3, 4],
+        ];
+
+        var page = new PageBuilder(1400);
+        page.Text(600, 200, "September 2026");
+        for (int c = 0; c < 7; c++)
+        {
+            page.Centered((borders[c] + borders[c + 1]) / 2, 220, names[c]);
+            for (int r = 0; r < weeks.Length; r++)
+            {
+                string label = (r, c) switch
+                {
+                    (0, 0) => "Aug 31",
+                    (0, 1) => "Sep 1",
+                    (4, 3) => "Oct 1",
+                    _ => weeks[r][c].ToString(System.Globalization.CultureInfo.InvariantCulture),
+                };
+                double width = (label.Length * PageBuilder.CharWidth) - (label.Contains(' ', StringComparison.Ordinal) ? 3 : 0);
+                page.Text(borders[c + 1] - 8 - width, 233 + (r * 83), label);
+            }
+        }
+
+        page.MergedLine(247, (337, "09:00 AM"), (392, "Probation talk"), (499, "10:00 AM"), (554, "Kaffee"));
+        page.MergedLine(247, (823, "09:15 AM"), (877, "group meeting"));
+        page.MergedLine(263, (823, "11:00 AM"), (877, "Renteneintritt"));
+        page.MergedLine(413, (176, "10:00 AM"), (229, "Austausch KI"));
+
+        // "Day at a glance" side panel to the right of the grid.
+        page.Text(1215, 222, "09:00 AM - 10:00 AM")
+            .Text(1215, 234, "LINK-DAT status meeting")
+            .Text(1215, 247, "Markus Becker");
+
+        RecognitionResult result = _parser.Parse(page.Build(), Today).Result!;
+
+        Assert.Equal(new DateOnly(2026, 8, 31), result.CoveredFrom);
+        Assert.Equal(new DateOnly(2026, 10, 4), result.CoveredTo);
+        Assert.Equal(
+            [
+                new CalendarEvent(new DateOnly(2026, 9, 1), new TimeOnly(9, 0), null, "Probation talk"),
+                new CalendarEvent(new DateOnly(2026, 9, 2), new TimeOnly(10, 0), null, "Kaffee"),
+                new CalendarEvent(new DateOnly(2026, 9, 4), new TimeOnly(9, 15), null, "group meeting"),
+                new CalendarEvent(new DateOnly(2026, 9, 4), new TimeOnly(11, 0), null, "Renteneintritt"),
+                new CalendarEvent(new DateOnly(2026, 9, 14), new TimeOnly(10, 0), null, "Austausch KI"),
+            ],
+            result.Events);
+    }
+
     private static PageBuilder CreateSeptemberGrid(bool includeCaption = true, int skipWeek = -1, double offsetX = 0)
     {
         var page = new PageBuilder(1400 + offsetX);
