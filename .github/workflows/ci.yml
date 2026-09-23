@@ -44,13 +44,13 @@ jobs:
         shell: pwsh
         run: ./build/publish.ps1 -Configuration Release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CalendarShot-win-x64
           path: artifacts/*.zip
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results
