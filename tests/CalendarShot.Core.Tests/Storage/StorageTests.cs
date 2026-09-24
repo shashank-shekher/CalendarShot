@@ -22,6 +22,8 @@ public sealed class StorageTests : IDisposable
             ReminderTime = new TimeOnly(17, 45),
             ReminderDays = [DayOfWeek.Saturday],
             OcrLanguage = "en-US",
+            CaptureScreen = CaptureScreenMode.Specific,
+            CaptureScreenDevice = @"\\.\DISPLAY3",
         };
 
         store.Save(settings);
@@ -31,6 +33,8 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(@"C:\Exports", loaded.ExportFolder);
         Assert.Equal(new TimeOnly(17, 45), loaded.ReminderTime);
         Assert.Equal([DayOfWeek.Saturday], loaded.ReminderDays);
+        Assert.Equal(CaptureScreenMode.Specific, loaded.CaptureScreen);
+        Assert.Equal(@"\\.\DISPLAY3", loaded.CaptureScreenDevice);
         Assert.Contains("\"Saturday\"", File.ReadAllText(store.FilePath), StringComparison.Ordinal);
     }
 

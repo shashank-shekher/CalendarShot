@@ -13,7 +13,8 @@ Everything runs locally on your PC. CalendarShot makes no network connections an
 ## Features
 
 - **Daily reminder** at a time and on the weekdays you choose. If the PC was off or asleep, the reminder appears when you are back on the same day.
-- **One-click capture** of the screen under the mouse pointer, after a short countdown so you can bring the calendar to the front. You can also import an existing screenshot from a file or the clipboard.
+- **Capture whenever you want** with **Capture now** in the CalendarShot window (click the tray icon), not only at reminder time. A short countdown lets you bring the calendar to the front. You can also import an existing screenshot from a file or the clipboard.
+- **Multi-monitor aware:** click the screen to capture on a numbered overlay, or set a fixed screen or the one under the mouse pointer.
 - **Recognises common calendar views:** month grid, day and week views with an hour axis, and agenda or schedule lists (Outlook, Outlook on the web, Google Calendar and similar).
 - **Review before export:** the screenshot and the recognised events are shown side by side so you can fix or untick anything that was misread.
 - **Cumulative monthly files:** `CalendarShot-2026-09.ics`, `CalendarShot-2026-10.ics` and so on. Each capture updates the months it covers. Events that disappear from your calendar are removed from the file too.

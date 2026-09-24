@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-24
+
+### Added
+
+- CalendarShot window with a **Capture now** button, import actions, the capture screen and the time of the next reminder. It opens when you click the tray icon or start CalendarShot again while it is running.
+- **Screen to capture** setting for systems with several monitors: ask each time with a numbered overlay on every screen, use the screen under the mouse pointer, or always use a specific screen.
+
+### Changed
+
+- The capture countdown appears on the screen being captured.
+- Starting CalendarShot by hand opens its window instead of only showing a notification.
+- Double-clicking the tray icon no longer starts a capture straight away; a single click opens the CalendarShot window.
+
 ## [1.0.1] - 2026-09-23
 
 ### Fixed

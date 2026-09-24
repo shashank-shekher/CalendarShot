@@ -1,4 +1,5 @@
 using System.Globalization;
+using CalendarShot.Capture;
 using CalendarShot.Core.Configuration;
 using CalendarShot.Ocr;
 
@@ -23,6 +24,7 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _captureDelay = new() { Minimum = AppSettingsValidator.MinCaptureDelay, Maximum = AppSettingsValidator.MaxCaptureDelay, Width = 70 };
     private readonly NumericUpDown _eventMinutes = new() { Minimum = AppSettingsValidator.MinEventMinutes, Maximum = AppSettingsValidator.MaxEventMinutes, Increment = 5, Width = 70 };
     private readonly ComboBox _ocrLanguage = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+    private readonly ComboBox _captureScreen = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
     private readonly CheckBox _startWithWindows = new() { Text = "Start CalendarShot when I sign in to Windows", AutoSize = true };
     private readonly CheckBox _keepScreenshots = new() { Text = "Keep captured screenshots (for troubleshooting)", AutoSize = true };
 
@@ -90,6 +92,7 @@ internal sealed class SettingsForm : Form
         }
 
         AddRow(layout, "On these days:", _days);
+        AddRow(layout, "Screen to capture:", _captureScreen);
         AddRow(layout, "Capture delay (seconds):", _captureDelay);
         AddRow(layout, "Default event length (minutes):", _eventMinutes);
         AddRow(layout, "Text recognition language:", _ocrLanguage);
@@ -167,6 +170,20 @@ internal sealed class SettingsForm : Form
             .FirstOrDefault(i => string.Equals(i.Tag, _settings.OcrLanguage, StringComparison.OrdinalIgnoreCase))
             ?? _ocrLanguage.Items[0];
 
+        _captureScreen.Items.Add(new ScreenItem(CaptureScreenMode.Ask, string.Empty, "Ask each time"));
+        _captureScreen.Items.Add(new ScreenItem(CaptureScreenMode.UnderPointer, string.Empty, "Screen under the mouse pointer"));
+        foreach (Screen screen in ScreenCatalog.Ordered())
+        {
+            _captureScreen.Items.Add(new ScreenItem(CaptureScreenMode.Specific, screen.DeviceName, ScreenCatalog.Describe(screen)));
+        }
+
+        ScreenItem? configured = _captureScreen.Items.Cast<ScreenItem>().FirstOrDefault(i =>
+            i.Mode == _settings.CaptureScreen
+            && (i.Mode != CaptureScreenMode.Specific || string.Equals(i.Device, _settings.CaptureScreenDevice, StringComparison.OrdinalIgnoreCase)));
+
+        // A saved screen that is no longer connected falls back to asking.
+        _captureScreen.SelectedItem = configured ?? _captureScreen.Items[0];
+
         UpdateReminderControls();
     }
 
@@ -203,6 +220,9 @@ internal sealed class SettingsForm : Form
         _settings.ReminderTime = new TimeOnly(_reminderTime.Value.Hour, _reminderTime.Value.Minute);
         _settings.ReminderDays = _days.Controls.OfType<CheckBox>().Where(c => c.Checked).Select(c => (DayOfWeek)c.Tag!).ToList();
         _settings.CaptureDelaySeconds = (int)_captureDelay.Value;
+        var screenChoice = (ScreenItem)_captureScreen.SelectedItem!;
+        _settings.CaptureScreen = screenChoice.Mode;
+        _settings.CaptureScreenDevice = screenChoice.Device;
         _settings.DefaultEventMinutes = (int)_eventMinutes.Value;
         _settings.OcrLanguage = (_ocrLanguage.SelectedItem as LanguageItem)?.Tag ?? string.Empty;
         _settings.StartWithWindows = _startWithWindows.Checked;
@@ -230,6 +250,11 @@ internal sealed class SettingsForm : Form
     }
 
     private sealed record LanguageItem(string Tag, string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    private sealed record ScreenItem(CaptureScreenMode Mode, string Device, string DisplayName)
     {
         public override string ToString() => DisplayName;
     }

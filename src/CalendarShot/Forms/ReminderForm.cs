@@ -38,7 +38,7 @@ internal sealed class ReminderForm : Form
         layout.Controls.Add(new Label
         {
             Text = "Open your calendar in month view (or the period you need),\n" +
-                   "then click Capture. The screen under the mouse pointer is used.",
+                   "then click Capture.",
             AutoSize = true,
             Margin = new Padding(0, 6, 0, 12),
         });

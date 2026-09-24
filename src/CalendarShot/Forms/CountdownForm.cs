@@ -10,11 +10,13 @@ internal sealed class CountdownForm : Form
 {
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly Label _message = new() { AutoSize = true };
+    private readonly Screen _screen;
     private int _remaining;
 
-    public CountdownForm(int seconds)
+    public CountdownForm(int seconds, Screen screen)
     {
         _remaining = seconds;
+        _screen = screen;
 
         Text = AppInfo.Name;
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
@@ -40,7 +42,9 @@ internal sealed class CountdownForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        Rectangle area = Screen.FromPoint(Cursor.Position).WorkingArea;
+
+        // Shown on the screen being captured; it is hidden before the capture is taken.
+        Rectangle area = _screen.WorkingArea;
         Location = new Point(area.Right - Width - 16, area.Bottom - Height - 16);
         _timer.Start();
     }
@@ -72,7 +76,7 @@ internal sealed class CountdownForm : Form
     private void UpdateMessage() =>
         _message.Text = string.Format(
             CultureInfo.CurrentCulture,
-            "Bring your calendar to the front.\nCapturing the screen in {0} second{1}…",
+            "Bring your calendar to the front on this screen.\nCapturing in {0} second{1}…",
             _remaining,
             _remaining == 1 ? string.Empty : "s");
 }

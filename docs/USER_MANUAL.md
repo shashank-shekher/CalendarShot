@@ -2,7 +2,7 @@
 
 CalendarShot turns screenshots of your calendar into `.ics` calendar files. It is meant for situations where you can see your calendar but cannot export, share or subscribe to it.
 
-This manual covers version 1.0.
+This manual covers version 1.1.
 
 ## Contents
 
@@ -24,7 +24,7 @@ This manual covers version 1.0.
 ## How it works
 
 1. At the time you choose, CalendarShot shows a small reminder in the corner of the screen.
-2. You open your calendar, usually in month view, and click **Capture**.
+2. You open your calendar, usually in month view, and click **Capture**. You can also capture at any other time with **Capture now**.
 3. CalendarShot takes a screenshot, reads the dates and events in it, and shows you what it found.
 4. You correct anything that was misread and click **Export**.
 5. CalendarShot updates one `.ics` file per month in your export folder.
@@ -42,7 +42,7 @@ This manual covers version 1.0.
 2. Optional but recommended: check the download. Open PowerShell in the download folder and run:
 
    ```powershell
-   Get-FileHash .\CalendarShot-1.0.0-win-x64.zip -Algorithm SHA256
+   Get-FileHash .\CalendarShot-1.1.0-win-x64.zip -Algorithm SHA256
    ```
 
    The result must match the value in the `.sha256` file published with the release.
@@ -61,6 +61,7 @@ On first start CalendarShot opens its settings window. Every setting can be chan
 | **Remind me to capture my calendar** | Turns the daily reminder on or off. | On |
 | **Reminder time** | Time of day when the reminder appears. | 9:00 |
 | **On these days** | Days on which you are reminded. | Monday to Friday |
+| **Screen to capture** | Which monitor is captured when you have more than one. *Ask each time* shows a large number on every screen and you click the one with your calendar. You can also choose *Screen under the mouse pointer* or a fixed screen. | Ask each time |
 | **Capture delay** | Seconds between clicking Capture and the screenshot being taken, so you can switch to your calendar. Use 0 to capture at once. | 5 |
 | **Default event length** | Length used for events whose end time is not visible, for example "9:00 AM Standup" in a month view. | 60 minutes |
 | **Text recognition language** | Language used to read the screenshot. *Automatic* uses your Windows display language. Pick the language your calendar is shown in if it differs. | Automatic |
@@ -69,7 +70,22 @@ On first start CalendarShot opens its settings window. Every setting can be chan
 
 Click **Save and start**. CalendarShot now runs in the notification area, the icons next to the clock. If you cannot see its icon, click the **^** arrow to show hidden icons. You can drag the icon onto the taskbar to keep it visible.
 
+Tip: right-click `CalendarShot.exe` and choose **Pin to Start** (or create a desktop shortcut). Starting CalendarShot from there while it is already running opens its main window.
+
 ## Capturing your calendar
+
+You can capture whenever you like, not only when the reminder appears.
+
+### The CalendarShot window
+
+Click the CalendarShot icon in the notification area, or start CalendarShot from the Start menu or a shortcut, to open its main window:
+
+- **Capture now** starts a capture straight away.
+- The line below it shows which screen will be captured. **Change** opens the settings.
+- **Import from file…** and **Import from clipboard** read a screenshot you already have.
+- **Open export folder** and **Settings** are at the bottom, with the time of the next reminder.
+
+Press **Esc** or close the window to hide it again. CalendarShot keeps running in the notification area.
 
 ### When the reminder appears
 
@@ -84,15 +100,19 @@ If your PC was switched off or asleep at the reminder time, the reminder appears
 ### Taking the capture
 
 1. Open your calendar and switch to the view you want to capture. **Month view** gives the most coverage per capture.
-2. Make sure the calendar window is on the monitor where your **mouse pointer** is. CalendarShot captures the whole of that monitor.
-3. Click **Capture**, or double-click the tray icon at any time.
-4. A countdown appears in the corner. Bring the calendar to the front before it reaches zero. Click **Cancel** to stop.
+2. Click **Capture now** in the CalendarShot window, **Capture now** in the tray menu, or **Capture** in the reminder.
+3. **If you have more than one screen**, each screen is dimmed and shows a large number. Click the screen that shows your calendar. Press **Esc** to cancel. You can skip this step by choosing a fixed screen under **Screen to capture** in the settings.
+4. A countdown appears in the corner of that screen. Bring the calendar to the front before it reaches zero. Click **Cancel** to stop.
+
+CalendarShot captures the whole of the chosen screen.
+
+**Virtual desktops:** Windows only draws the desktop you are currently looking at. If you use several virtual desktops (Task View), switch to the desktop that has your calendar before the countdown ends.
 
 CalendarShot then reads the screenshot. This usually takes a few seconds.
 
 ### Other ways to provide a screenshot
 
-From the tray menu you can also use:
+From the CalendarShot window or the tray menu you can also use:
 
 - **Import screenshot from file…** for a PNG, JPEG or BMP image you already have.
 - **Import screenshot from clipboard** after using **Windows + Shift + S** or **Print Screen**. This is handy for capturing just the calendar area.
@@ -155,16 +175,17 @@ Note that importing adds or updates events but usually does not delete events th
 
 ## The tray menu
 
-Right-click the CalendarShot icon in the notification area:
+Click the CalendarShot icon in the notification area to open the CalendarShot window. Right-click it for the menu:
 
 | Item | Action |
 | --- | --- |
-| **Capture calendar now** | Start a capture immediately. Double-clicking the icon does the same. |
+| **Open CalendarShot** | Open the CalendarShot window. Clicking the icon does the same. |
+| **Capture now** | Start a capture immediately. |
 | **Import screenshot from file…** | Read an existing image. |
 | **Import screenshot from clipboard** | Read the image on the clipboard. |
 | **Open export folder** | Open the folder with your `.ics` files. |
 | **Open data folder** | Open `Documents\CalendarShot`. |
-| **Settings…** | Change settings. Starting `CalendarShot.exe` again while it is running also opens this. |
+| **Settings…** | Change settings. |
 | **About** | Version and licence information. |
 | **Exit** | Close CalendarShot until the next sign-in, or until you start it again. |
 
@@ -214,8 +235,11 @@ Check that reminders are on and today is one of the selected days. The reminder 
 **CalendarShot does not start with Windows.**
 Make sure **Start CalendarShot when I sign in to Windows** is ticked. Also check **Task Manager > Startup apps**, where CalendarShot must be *Enabled*. If you moved `CalendarShot.exe`, start it once from the new location and the startup entry is updated automatically.
 
-**The wrong monitor was captured.**
-CalendarShot captures the monitor under the mouse pointer when the countdown ends. Move the pointer onto the calendar's monitor, or use **Import screenshot from clipboard**.
+**The wrong screen was captured.**
+Check **Screen to capture** in the settings. With *Ask each time* you pick the screen for every capture; with *Screen under the mouse pointer* the screen under the pointer when the countdown ends is used. If a fixed screen is no longer connected, CalendarShot asks instead. Screens are numbered from left to right.
+
+**The capture shows a different virtual desktop.**
+Only the virtual desktop you are looking at can be captured. Switch to the desktop with your calendar before the countdown ends.
 
 If a problem persists, look at the most recent file in `Documents\CalendarShot\logs` and include the relevant lines when you report an issue. Please do not post screenshots of your real calendar.
 

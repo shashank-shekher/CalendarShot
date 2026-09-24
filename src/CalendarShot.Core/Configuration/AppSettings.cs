@@ -29,6 +29,15 @@ public sealed class AppSettings
     /// <summary>Seconds between starting a capture and taking the screenshot.</summary>
     public int CaptureDelaySeconds { get; set; } = 5;
 
+    /// <summary>Which monitor is captured when there is more than one.</summary>
+    public CaptureScreenMode CaptureScreen { get; set; } = CaptureScreenMode.Ask;
+
+    /// <summary>
+    /// Windows device name of the monitor to capture (for example <c>\\.\DISPLAY2</c>)
+    /// when <see cref="CaptureScreen"/> is <see cref="CaptureScreenMode.Specific"/>.
+    /// </summary>
+    public string CaptureScreenDevice { get; set; } = string.Empty;
+
     /// <summary>Duration used for events whose end time is not visible.</summary>
     public int DefaultEventMinutes { get; set; } = 60;
 
@@ -48,11 +57,28 @@ public sealed class AppSettings
         ReminderTime = ReminderTime,
         ReminderDays = [.. ReminderDays],
         CaptureDelaySeconds = CaptureDelaySeconds,
+        CaptureScreen = CaptureScreen,
+        CaptureScreenDevice = CaptureScreenDevice,
         DefaultEventMinutes = DefaultEventMinutes,
         OcrLanguage = OcrLanguage,
         StartWithWindows = StartWithWindows,
         KeepScreenshots = KeepScreenshots,
     };
+}
+
+/// <summary>
+/// How the monitor to capture is chosen.
+/// </summary>
+public enum CaptureScreenMode
+{
+    /// <summary>Show a picker on every monitor and let the user click one. Skipped with a single monitor.</summary>
+    Ask,
+
+    /// <summary>The monitor under the mouse pointer when the countdown ends.</summary>
+    UnderPointer,
+
+    /// <summary>A fixed monitor, identified by <see cref="AppSettings.CaptureScreenDevice"/>.</summary>
+    Specific,
 }
 
 /// <summary>

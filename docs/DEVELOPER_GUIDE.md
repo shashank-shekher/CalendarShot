@@ -94,7 +94,7 @@ A development build uses the same `Documents\CalendarShot` folder and the same s
 ```
             ┌─────────────────────────── CalendarShot (Windows app) ───────────────────────────┐
             │                                                                                   │
- Reminder ─►│ TrayApplicationContext ──► CountdownForm ──► ScreenCapture ──┐                    │
+ Reminder ─►│ TrayApplicationContext ─► ScreenPicker ─► CountdownForm ─► ScreenCapture ─┐        │
  timer      │        │                                   ImageSources ─────┤ Bitmap             │
             │        │                                                     ▼                    │
             │        │                                            WindowsOcrService             │
@@ -119,7 +119,9 @@ A development build uses the same `Documents\CalendarShot` folder and the same s
 Key points:
 
 - **`TrayApplicationContext`** owns the whole flow. It runs on the UI thread; the only `async void` method is the menu entry point `StartCapture`, which catches and reports all exceptions.
-- **`SingleInstance`** uses a session-local mutex. A second launch signals the running instance, which opens the settings window, and then exits.
+- **`HomeForm`** is the small main window with **Capture now**. It opens on a left click of the tray icon and when the application is started again while running. It closes itself before any action runs, so it never appears in a capture.
+- **Screen selection** follows `AppSettings.CaptureScreen`. `Ask` shows `ScreenPicker`, one dimmed overlay per monitor numbered left to right by `ScreenCatalog`, and the user clicks one. `UnderPointer` uses the monitor under the pointer when the countdown ends. `Specific` uses the saved device name (`\\.\DISPLAYn`) and falls back to asking if that monitor is not connected. With a single monitor no choice is shown.
+- **`SingleInstance`** uses a session-local mutex. A second launch signals the running instance, which opens `HomeForm`, and then exits.
 - **Settings** (`settings.json`) and **state** (`state.json`) are separate. Settings are what the user configures; state is what the application remembers, such as the date of the last reminder.
 - **`ReminderPolicy`** is a pure function checked every 30 seconds. Keeping it pure makes it easy to test and means a missed reminder (PC asleep) fires later the same day.
 
@@ -210,7 +212,9 @@ The Windows-specific project (`src/CalendarShot`) has no automated UI tests. Bef
 
 - [ ] First run shows the welcome settings window; cancelling exits without creating a startup entry.
 - [ ] Saving settings creates `Documents\CalendarShot\settings.json` and, if enabled, the `HKCU\...\Run\CalendarShot` value.
-- [ ] Starting a second copy opens the settings window of the running copy.
+- [ ] Starting a second copy opens the CalendarShot window of the running copy; clicking the tray icon does the same.
+- [ ] With several monitors and *Ask each time*, every monitor shows a numbered overlay; clicking one captures that monitor, Esc cancels.
+- [ ] A fixed screen that is disconnected falls back to asking.
 - [ ] The reminder appears at the configured time, and Snooze, Skip and Capture behave as described.
 - [ ] Capture, file import and clipboard import all reach the review window.
 - [ ] Export writes the expected monthly files, and clicking the notification opens the folder.

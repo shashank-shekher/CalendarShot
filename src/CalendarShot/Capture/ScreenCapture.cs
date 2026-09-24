@@ -5,13 +5,16 @@ namespace CalendarShot.Capture;
 internal static class ScreenCapture
 {
     /// <summary>
-    /// Captures the full monitor under the mouse pointer. The process is
-    /// per-monitor DPI aware, so the bounds are physical pixels and the image
-    /// is captured at native resolution.
+    /// Captures one whole monitor. The process is per-monitor DPI aware, so the
+    /// bounds are physical pixels and the image is captured at native resolution.
     /// </summary>
-    public static Bitmap CaptureScreenUnderCursor()
+    /// <remarks>
+    /// Only what is currently displayed can be captured. Windows does not render
+    /// inactive virtual desktops, so the calendar must be on the desktop in view.
+    /// </remarks>
+    public static Bitmap Capture(Screen screen)
     {
-        Screen screen = Screen.FromPoint(Cursor.Position);
+        ArgumentNullException.ThrowIfNull(screen);
         Rectangle bounds = screen.Bounds;
 
         var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
@@ -27,4 +30,6 @@ internal static class ScreenCapture
             throw;
         }
     }
+
+    public static Screen ScreenUnderCursor() => Screen.FromPoint(Cursor.Position);
 }

@@ -44,6 +44,15 @@ public static partial class AppSettingsValidator
             errors.Add($"The default event length must be between {MinEventMinutes} and {MaxEventMinutes} minutes.");
         }
 
+        if (!Enum.IsDefined(settings.CaptureScreen))
+        {
+            errors.Add("The screen to capture has an unknown value.");
+        }
+        else if (settings.CaptureScreen == CaptureScreenMode.Specific && !DeviceNamePattern().IsMatch(settings.CaptureScreenDevice ?? string.Empty))
+        {
+            errors.Add("Choose which screen to capture.");
+        }
+
         if (!string.IsNullOrEmpty(settings.OcrLanguage) && !LanguageTagPattern().IsMatch(settings.OcrLanguage))
         {
             errors.Add("The OCR language is not a valid language tag.");
@@ -90,4 +99,8 @@ public static partial class AppSettingsValidator
 
     [GeneratedRegex(@"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$", RegexOptions.CultureInvariant)]
     private static partial Regex LanguageTagPattern();
+
+    // Windows monitor device names look like \\.\DISPLAY1.
+    [GeneratedRegex(@"^\\\\\.\\[A-Za-z0-9]{1,32}$", RegexOptions.CultureInvariant)]
+    private static partial Regex DeviceNamePattern();
 }

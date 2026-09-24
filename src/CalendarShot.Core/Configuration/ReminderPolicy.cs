@@ -37,4 +37,38 @@ public static class ReminderPolicy
 
         return TimeOnly.FromDateTime(localNow) >= settings.ReminderTime;
     }
+
+    /// <summary>
+    /// When the reminder will next appear, or <see langword="null"/> when reminders
+    /// are off. A value at or before <paramref name="localNow"/> means it is due now.
+    /// </summary>
+    public static DateTime? NextReminder(DateTime localNow, AppSettings settings, DateOnly? lastShown, DateTime? snoozedUntil)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (!settings.RemindersEnabled || settings.ReminderDays is null || settings.ReminderDays.Count == 0)
+        {
+            return null;
+        }
+
+        DateOnly today = DateOnly.FromDateTime(localNow);
+        for (int offset = 0; offset <= 7; offset++)
+        {
+            DateOnly date = today.AddDays(offset);
+            if (!settings.ReminderDays.Contains(date.DayOfWeek) || (offset == 0 && lastShown == today))
+            {
+                continue;
+            }
+
+            DateTime at = date.ToDateTime(settings.ReminderTime);
+            if (offset == 0 && snoozedUntil is DateTime until && until > at)
+            {
+                at = until;
+            }
+
+            return at;
+        }
+
+        return null;
+    }
 }

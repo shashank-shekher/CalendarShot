@@ -37,6 +37,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _busy;
     private bool _reminderOpen;
     private string? _lastExportFolder;
+    private HomeForm? _home;
 
     public TrayApplicationContext(StorageLayout layout, FileLog log, SingleInstance instance, bool autoStarted)
     {
@@ -57,13 +58,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Text = AppInfo.Name,
             ContextMenuStrip = BuildMenu(),
         };
-        _trayIcon.DoubleClick += (_, _) => StartCapture(CaptureSource.Screen);
+        _trayIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                ShowHome();
+            }
+        };
         _trayIcon.BalloonTipClicked += (_, _) => OpenExportFolder();
 
         _reminderTimer = new System.Windows.Forms.Timer { Interval = (int)ReminderCheckInterval.TotalMilliseconds };
         _reminderTimer.Tick += (_, _) => CheckReminder();
 
-        instance.OnActivationRequested(() => _ui.Post(_ => ShowSettings(firstRun: false), null));
+        // Starting CalendarShot again (Start menu, shortcut) opens the main window.
+        instance.OnActivationRequested(() => _ui.Post(_ => ShowHome(), null));
 
         // Start once the message loop is running so dialogs behave normally.
         _ui.Post(_ => Start(autoStarted), null);
@@ -118,26 +126,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _trayIcon.Visible = true;
         _reminderTimer.Start();
 
+        CheckReminder();
+
+        // Started by hand rather than at sign-in: show the main window so the
+        // user sees that CalendarShot is running and can capture straight away.
         if (!autoStarted)
         {
-            _trayIcon.ShowBalloonTip(
-                4000,
-                AppInfo.Name,
-                "CalendarShot is running in the notification area. Right-click the icon for options.",
-                ToolTipIcon.Info);
+            ShowHome();
         }
-
-        CheckReminder();
     }
 
     private ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
-        var capture = new ToolStripMenuItem("Capture calendar now", null, (_, _) => StartCapture(CaptureSource.Screen))
+        var open = new ToolStripMenuItem("Open CalendarShot", null, (_, _) => ShowHome())
         {
             Font = new Font(menu.Font, FontStyle.Bold),
         };
-        menu.Items.Add(capture);
+        menu.Items.Add(open);
+        menu.Items.Add("Capture now", null, (_, _) => StartCapture(CaptureSource.Screen));
         menu.Items.Add("Import screenshot from file…", null, (_, _) => StartCapture(CaptureSource.File));
         menu.Items.Add("Import screenshot from clipboard", null, (_, _) => StartCapture(CaptureSource.Clipboard));
         menu.Items.Add(new ToolStripSeparator());
@@ -148,6 +155,88 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
         return menu;
+    }
+
+    private void ShowHome()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_home is { IsDisposed: false })
+        {
+            _home.Activate();
+            return;
+        }
+
+        _home = new HomeForm(DescribeScreenChoice(), DescribeNextReminder());
+        _home.ActionRequested += (_, action) => _ui.Post(_ => RunHomeAction(action), null);
+        _home.FormClosed += (sender, _) =>
+        {
+            ((Form)sender!).Dispose();
+            _home = null;
+        };
+        _home.Show();
+        _home.Activate();
+    }
+
+    private void RunHomeAction(HomeAction action)
+    {
+        switch (action)
+        {
+            case HomeAction.CaptureScreen:
+                StartCapture(CaptureSource.Screen);
+                break;
+            case HomeAction.ImportFile:
+                StartCapture(CaptureSource.File);
+                break;
+            case HomeAction.ImportClipboard:
+                StartCapture(CaptureSource.Clipboard);
+                break;
+            case HomeAction.OpenExportFolder:
+                OpenFolder(_settings.ExportFolder);
+                break;
+            case HomeAction.Settings:
+                ShowSettings(firstRun: false);
+                break;
+        }
+    }
+
+    private string DescribeScreenChoice()
+    {
+        if (Screen.AllScreens.Length == 1)
+        {
+            return "Captures your screen.";
+        }
+
+        return _settings.CaptureScreen switch
+        {
+            CaptureScreenMode.UnderPointer => "Captures the screen under the mouse pointer.",
+            CaptureScreenMode.Specific when ScreenCatalog.FindByDevice(_settings.CaptureScreenDevice) is Screen screen =>
+                $"Captures {ScreenCatalog.Describe(screen)}.",
+            _ => "You choose the screen when capturing.",
+        };
+    }
+
+    private string DescribeNextReminder()
+    {
+        DateTime now = DateTime.Now;
+        DateTime? next = ReminderPolicy.NextReminder(now, _settings, _state.LastReminderDate, _snoozedUntil);
+        if (next is not DateTime at)
+        {
+            return "Reminders are off.";
+        }
+
+        if (at <= now)
+        {
+            return "A capture reminder is due now.";
+        }
+
+        string day = at.Date == now.Date ? "today"
+            : at.Date == now.Date.AddDays(1) ? "tomorrow"
+            : at.ToString("dddd, d MMMM", CultureInfo.CurrentCulture);
+        return $"Next reminder: {day} at {at.ToString("t", CultureInfo.CurrentCulture)}.";
     }
 
     private void ShowSettings(bool firstRun)
@@ -236,6 +325,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _busy = true;
+
+        // Never let the main window end up in the screenshot.
+        _home?.Close();
         try
         {
             await RunCaptureAsync(source);
@@ -324,18 +416,31 @@ internal sealed class TrayApplicationContext : ApplicationContext
         switch (source)
         {
             case CaptureSource.Screen:
+                Screen? target = await ChooseScreenAsync();
+                if (target is null)
+                {
+                    return null;
+                }
+
                 if (_settings.CaptureDelaySeconds > 0)
                 {
-                    using var countdown = new CountdownForm(_settings.CaptureDelaySeconds);
+                    using var countdown = new CountdownForm(_settings.CaptureDelaySeconds, target);
                     if (countdown.ShowDialog() != DialogResult.OK)
                     {
                         return null;
                     }
                 }
 
-                // Give the countdown window time to disappear from the screen.
+                // Give the picker and countdown windows time to disappear from the screen.
                 await Task.Delay(300);
-                return ScreenCapture.CaptureScreenUnderCursor();
+
+                if (_settings.CaptureScreen == CaptureScreenMode.UnderPointer && Screen.AllScreens.Length > 1)
+                {
+                    target = ScreenCapture.ScreenUnderCursor();
+                }
+
+                _log.Info($"Capturing a {target.Bounds.Width}x{target.Bounds.Height} screen.");
+                return ScreenCapture.Capture(target);
 
             case CaptureSource.File:
                 using (var dialog = new OpenFileDialog { Filter = ImageSources.FileDialogFilter, Title = "Choose a calendar screenshot" })
@@ -359,6 +464,36 @@ internal sealed class TrayApplicationContext : ApplicationContext
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// The monitor to capture according to the settings, or <see langword="null"/>
+    /// when the user cancelled the choice.
+    /// </summary>
+    private async Task<Screen?> ChooseScreenAsync()
+    {
+        Screen[] screens = Screen.AllScreens;
+        if (screens.Length == 1)
+        {
+            return screens[0];
+        }
+
+        switch (_settings.CaptureScreen)
+        {
+            case CaptureScreenMode.UnderPointer:
+                return ScreenCapture.ScreenUnderCursor();
+
+            case CaptureScreenMode.Specific:
+                if (ScreenCatalog.FindByDevice(_settings.CaptureScreenDevice) is Screen configured)
+                {
+                    return configured;
+                }
+
+                _log.Warn("The configured screen is not connected; asking the user instead.");
+                break;
+        }
+
+        return await ScreenPicker.PickAsync();
     }
 
     private DateVocabulary CreateVocabulary()
